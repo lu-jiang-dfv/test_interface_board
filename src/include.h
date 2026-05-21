@@ -39,6 +39,7 @@
 #define EUSART_H "code_base/drivers/nano_pic18f47k42/eusart.h"
 #define HAL_H "code_base/drivers/nano_pic18f47k42/hal.h"
 #define I2C_HOST_H "code_base/drivers/nano_pic18f47k42/i2c_host.h"
+#define I2C_CLIENT_H "code_base/drivers/nano_pic18f47k42/i2c_client.h"
 #define MCU_CONFIG_H "code_base/drivers/nano_pic18f47k42/mcu_config.h"
 #elif defined(sk_8592_1cell_rev0)
 #define ADC_H "code_base/drivers/sk-8592_1cell_rev0/adc.h"
