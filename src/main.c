@@ -11,11 +11,8 @@
 #include EUSART_H
 #include HAL_H
 #include I2C_CLIENT_H
-//#include "code_base/drivers/nano_pic18f47k42/i2c2.h"
 #include "code_base/libs/dfv_i2c_registers.h"
 #include "code_base/libs/display.h"
-
-uint8_t e[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 int main(void) {
   // EepromInit();
@@ -28,7 +25,7 @@ int main(void) {
   // LedInit();
   // WhiteLedInit();
   EusartInit();
-  I2cClientInit(0);
+  I2c2ClientInit();
   CvdInit();
 //  I2C2_Initialize();
 
@@ -47,16 +44,11 @@ int main(void) {
   // data[kHeadLightCurrentLimit] = 70;  // current limit for mini 10mA per unit
   // I2cClientSetRegisters(0, data, 10);
 
-  TRISBbits.TRISB1 = TRIS_IN;
-  TRISBbits.TRISB2 = TRIS_IN;
-
   TRISBbits.TRISB4 = TRIS_OUT;
   LATBbits.LATB4 = 0;
 
   TRISCbits.TRISC6 = TRIS_OUT;
   LATCbits.LATC6 = 0;
-
-//  ee_write(0x79, 0);
 
   GlobalInterruptEnable(true);
 
@@ -73,40 +65,24 @@ int main(void) {
   DisplayAddStr("$");
   DisplayAndWait(150);
 
-  uint16_t counter = 0;
+  uint16_t display_wait_counter = 0;
+  uint16_t display_line_counter = 0;
   while(1) {
     DelayMs(20);
-    // if (counter > 10) {
-    //   counter = 0;
-    //   DisplayAddStr("*");
-    //   PetWatchDog();
-    // } else {
-    //   DisplayOneItem();
-    //   counter++;
-    // }
-    if (counter > 100) {
-      counter = 0;
-      // DisplayAddNum8(PIE0);
-      // DisplayAddNum8(PIE1);
-      // DisplayAddNum8(PIE2);
-      // DisplayAddNum8(PIE3);
-      // DisplayAddNum8(PIE4);
-      // DisplayAddNum8(PIE5);
-      // DisplayAddNum8(PIE6);
-      // DisplayAddNum8(PIE7);
-      // DisplayAddNum8(PIE8);
-      // DisplayAddNum8(PIE9);
-      // DisplayAddNum8(PIE10);
-      DisplayAddNum8(I2C1CON1);
-      DisplayAddNum8(I2C2STAT0);
-      DisplayAddNum8(I2C1STAT1);
-      DisplayAddNum8(I2C1ERR);
-      DisplayAddStr("$");
+    if (display_wait_counter > 50) {
+      display_wait_counter = 0;
+      DisplayAddStr("*");
+      if (display_line_counter >= 60) {
+        display_line_counter = 0;
+        DisplayAddStr("$");
+      } else {
+        ++display_line_counter;
+      }
+      PetWatchDog();
     } else {
       DisplayOneItem();
-      counter++;
+      ++display_wait_counter;
     }
-    PetWatchDog();
     uint32_t cvd_read = CvdRead();
     uint16_t value1 = cvd_read >> 16;
     uint16_t value2 = cvd_read & 0xFFFF;
@@ -128,51 +104,39 @@ void __interrupt(irq(default), base(0x4008)) DEFAULT_ISR(void) {
   bool caught = false; 
   GlobalInterruptEnable(false);
   // eusart interrupt
-//  if (CheckUsartTxIntEnabled() &&
-//      CheckUsartTxIntFlag()) {  // If interrupt enabled and flag is set
-//  if (PIR3bits.U1TXIF) {  // If interrupt enabled and flag is set
-//    if (!I2cClientIsActive()) {
   if (PIR3bits.U1TXIF && PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
-      PIR3bits.U1TXIF = 0;  // Clear the interrupt flag
       EusartInterruptHandler();
       caught = true;
-//    }
+  }
+
+  if (PIE6bits.I2C2IE && PIR6bits.I2C2IF)  {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE5bits.I2C2TXIE && PIR5bits.I2C2TXIF) {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE5bits.I2C2RXIE && PIR5bits.I2C2RXIF) {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE6bits.I2C2EIE && PIR6bits.I2C2EIF) {
+    I2c2ClientErrorIsr();
+    caught = true;
   }
 
   if (PIE3bits.I2C1IE && PIR3bits.I2C1IF)  {
-    I2cClientIsr();
+    I2c1ClientIsr();
     caught = true;
   } else if (PIE3bits.I2C1TXIE && PIR3bits.I2C1TXIF) {
-    I2cClientIsr();
+    I2c1ClientIsr();
     caught = true;
   } else if (PIE2bits.I2C1RXIE && PIR2bits.I2C1RXIF) {
-    I2cClientIsr();
+    I2c1ClientIsr();
     caught = true;
   } else if (PIE3bits.I2C1EIE && PIR3bits.I2C1EIF) {
-    I2cClientErrorIsr();
+    I2c1ClientErrorIsr();
     caught = true;
   }
-    // if(PIE6bits.I2C2EIE == 1 && PIR6bits.I2C2EIF == 1)
-    // {
-    //     I2C2_ISR();
-    //     caught = true;
-    //   }
-    // else if(PIE5bits.I2C2RXIE == 1 && PIR5bits.I2C2RXIF == 1)
-    // {
-    //     I2C2_ISR();
-    //     caught = true;
-    // }
-    // else if(PIE6bits.I2C2IE == 1 && PIR6bits.I2C2IF == 1)
-    // {
-    //     I2C2_ISR();
-    //     caught = true;
-    // }
-    // else if(PIE5bits.I2C2TXIE == 1 && PIR5bits.I2C2TXIF == 1)
-    // {
-    //     I2C2_ISR();
-    //     caught = true;
-    // }
-  
+
   if (!caught) {
 //      LATCbits.LATC6 = 1;
 //      ee_write(0x79, U1ERRIR);
