@@ -14,35 +14,20 @@
 #include "code_base/libs/dfv_i2c_registers.h"
 #include "code_base/libs/display.h"
 
+inline bool check_i2c1(void);
+inline bool check_i2c2(void);
+
 int main(void) {
-  // EepromInit();
   BoardInit();
   TRISEbits.TRISE0 = TRIS_OUT;
   LATEbits.LATE0 = 1;
-  // AdcInit();
-  // ChargeInit();
-  // HeadlightInit();
-  // LedInit();
-  // WhiteLedInit();
   EusartInit();
+  I2c1ClientInit();
   I2c2ClientInit();
   CvdInit();
-//  I2C2_Initialize();
 
   TRISBbits.TRISB0 = TRIS_OUT;
   LATBbits.LATB0 = 0;
-
-  //I2cRegisterConfig();
-
-  // I2cClientSetCommType(kI2cRegister);
-  // uint8_t data[10];
-  // for (uint8_t i = 0; i < 10; ++i) {
-  //   data[i] = 0;
-  // }
-  // data[kHeadLightID] = kHeadLightMini;  // ID for mini board
-  // data[kHeadLightPolarity] = kPolarityDental;  // polarity for mini
-  // data[kHeadLightCurrentLimit] = 70;  // current limit for mini 10mA per unit
-  // I2cClientSetRegisters(0, data, 10);
 
   TRISBbits.TRISB4 = TRIS_OUT;
   LATBbits.LATB4 = 0;
@@ -103,26 +88,30 @@ void __interrupt(irq(default), base(0x4008)) DEFAULT_ISR(void) {
   LATBbits.LATB4 = 1;
   bool caught = false; 
   GlobalInterruptEnable(false);
-  // eusart interrupt
-  if (PIR3bits.U1TXIF && PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
-      EusartInterruptHandler();
-      caught = true;
-  }
 
-  if (PIE6bits.I2C2IE && PIR6bits.I2C2IF)  {
-    I2c2ClientIsr();
-    caught = true;
-  } else if (PIE5bits.I2C2TXIE && PIR5bits.I2C2TXIF) {
-    I2c2ClientIsr();
-    caught = true;
-  } else if (PIE5bits.I2C2RXIE && PIR5bits.I2C2RXIF) {
-    I2c2ClientIsr();
-    caught = true;
-  } else if (PIE6bits.I2C2EIE && PIR6bits.I2C2EIF) {
-    I2c2ClientErrorIsr();
-    caught = true;
+  if (I2c1ClientIsActive()) {
+    caught = check_i2c1();
+  } else if (I2c2ClientIsActive()) {
+    caught = check_i2c2();
+  } else {
+     caught = check_i2c1() || check_i2c2(); 
+        // eusart interrupt
+    if (PIR3bits.U1TXIF && PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
+        EusartInterruptHandler();
+        caught = true;
+    }
   }
+  if (!caught) {
+//      LATCbits.LATC6 = 1;
+//      ee_write(0x79, U1ERRIR);
+  }
+  GlobalInterruptEnable(true);
+  LATBbits.LATB4 = 0;
+  LATCbits.LATC6 = 0;
+}
 
+inline bool check_i2c1(void) {
+  bool caught = false;
   if (PIE3bits.I2C1IE && PIR3bits.I2C1IF)  {
     I2c1ClientIsr();
     caught = true;
@@ -136,12 +125,24 @@ void __interrupt(irq(default), base(0x4008)) DEFAULT_ISR(void) {
     I2c1ClientErrorIsr();
     caught = true;
   }
-
-  if (!caught) {
-//      LATCbits.LATC6 = 1;
-//      ee_write(0x79, U1ERRIR);
-  }
-  GlobalInterruptEnable(true);
-  LATBbits.LATB4 = 0;
-  LATCbits.LATC6 = 0;
+  return caught;
 }
+
+inline bool check_i2c2(void) {
+  bool caught = false;
+  if (PIE6bits.I2C2IE && PIR6bits.I2C2IF)  {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE5bits.I2C2TXIE && PIR5bits.I2C2TXIF) {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE5bits.I2C2RXIE && PIR5bits.I2C2RXIF) {
+    I2c2ClientIsr();
+    caught = true;
+  } else if (PIE6bits.I2C2EIE && PIR6bits.I2C2EIF) {
+    I2c2ClientErrorIsr();
+    caught = true;
+  }
+  return caught;
+}
+
