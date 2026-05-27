@@ -14,8 +14,9 @@
 #include "code_base/libs/dfv_i2c_registers.h"
 #include "code_base/libs/display.h"
 
-inline bool check_i2c1(void);
-inline bool check_i2c2(void);
+inline bool check_i2c1_isr(void);
+inline bool check_i2c2_isr(void);
+void check_i2c_and_reset(uint8_t i2c_port);
 
 int main(void) {
   BoardInit();
@@ -52,11 +53,15 @@ int main(void) {
 
   uint16_t display_wait_counter = 0;
   uint16_t display_line_counter = 0;
-  while(1) {
+  while (1) {
     DelayMs(20);
     if (display_wait_counter > 50) {
       display_wait_counter = 0;
       DisplayAddStr("*");
+      GlobalInterruptEnable(false);
+      check_i2c_and_reset(1);
+      check_i2c_and_reset(2);
+      GlobalInterruptEnable(true);
       if (display_line_counter >= 60) {
         display_line_counter = 0;
         DisplayAddStr("$");
@@ -76,8 +81,8 @@ int main(void) {
     } else {
       LATEbits.LATE0 = 0;
     }
-//    DisplayAddNum32(CvdRead());
-//    DisplayAddStr(" ");
+    //    DisplayAddNum32(CvdRead());
+    //    DisplayAddStr(" ");
   }
 }
 
@@ -86,33 +91,34 @@ int main(void) {
  */
 void __interrupt(irq(default), base(0x4008)) DEFAULT_ISR(void) {
   LATBbits.LATB4 = 1;
-  bool caught = false; 
+  bool caught = false;
   GlobalInterruptEnable(false);
 
   if (I2c1ClientIsActive()) {
-    caught = check_i2c1();
+    caught = check_i2c1_isr();
   } else if (I2c2ClientIsActive()) {
-    caught = check_i2c2();
+    caught = check_i2c2_isr();
   } else {
-     caught = check_i2c1() || check_i2c2(); 
-        // eusart interrupt
-    if (PIR3bits.U1TXIF && PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
-        EusartInterruptHandler();
-        caught = true;
+    caught = check_i2c1_isr() || check_i2c2_isr();
+    // eusart interrupt
+    if (PIR3bits.U1TXIF &&
+        PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
+      EusartInterruptHandler();
+      caught = true;
     }
   }
   if (!caught) {
-//      LATCbits.LATC6 = 1;
-//      ee_write(0x79, U1ERRIR);
+    //      LATCbits.LATC6 = 1;
+    //      ee_write(0x79, U1ERRIR);
   }
   GlobalInterruptEnable(true);
   LATBbits.LATB4 = 0;
   LATCbits.LATC6 = 0;
 }
 
-inline bool check_i2c1(void) {
+inline bool check_i2c1_isr(void) {
   bool caught = false;
-  if (PIE3bits.I2C1IE && PIR3bits.I2C1IF)  {
+  if (PIE3bits.I2C1IE && PIR3bits.I2C1IF) {
     I2c1ClientIsr();
     caught = true;
   } else if (PIE3bits.I2C1TXIE && PIR3bits.I2C1TXIF) {
@@ -128,9 +134,9 @@ inline bool check_i2c1(void) {
   return caught;
 }
 
-inline bool check_i2c2(void) {
+inline bool check_i2c2_isr(void) {
   bool caught = false;
-  if (PIE6bits.I2C2IE && PIR6bits.I2C2IF)  {
+  if (PIE6bits.I2C2IE && PIR6bits.I2C2IF) {
     I2c2ClientIsr();
     caught = true;
   } else if (PIE5bits.I2C2TXIE && PIR5bits.I2C2TXIF) {
@@ -146,3 +152,88 @@ inline bool check_i2c2(void) {
   return caught;
 }
 
+void check_i2c_and_reset(uint8_t i2c_port) {
+  const uint16_t kFixedStateLimit =
+      60;  // if the i2c state machine is stuck in a fixed state for more than
+           // this number of interrupts, reset it
+  static uint16_t i2c1_fixed_state_counter = 0;
+  static uint8_t i2c1_success_count = 0;
+  if (i2c_port == 1) {
+    if (I2c1ClientSuccessCountGet() == i2c1_success_count) {
+      if (i2c1_fixed_state_counter >= kFixedStateLimit) {
+        DisplayAddStr("$i2c1 reset$");
+        I2c1ClientInit();
+        i2c1_fixed_state_counter = 0;
+      } else {
+        ++i2c1_fixed_state_counter;
+      }
+    } else {
+      i2c1_success_count = I2c1ClientSuccessCountGet();
+      i2c1_fixed_state_counter = 0;
+    }
+  }
+
+  static uint16_t i2c2_fixed_state_counter = 0;
+  static uint8_t i2c2_success_count = 0;
+  if (i2c_port == 2) {
+    if (I2c2ClientSuccessCountGet() == i2c2_success_count) {
+      if (i2c2_fixed_state_counter >= kFixedStateLimit) {
+        DisplayAddStr("$i2c2 reset$");
+        I2c2ClientInit();
+        i2c2_fixed_state_counter = 0;
+      } else {
+        ++i2c2_fixed_state_counter;
+      }
+    } else {
+      i2c2_success_count = I2c2ClientSuccessCountGet();
+      i2c2_fixed_state_counter = 0;
+    }
+  }
+}
+#if 0
+  static uint8_t i2c1_last_send_state = 0;
+  static uint8_t i2c1_last_receive_state = 0;
+    if (I2c1ClientIsActive()) {
+      if ((I2c1ClientSendStateGet() == i2c1_last_send_state) &&
+          (I2c1ClientReceiveStateGet() == i2c1_last_receive_state)) {
+        if (i2c1_fixed_state_counter >= kFixedStateLimit) {
+          DisplayAddStr("$i2c1 reset$");
+          I2c1ClientInit();
+          i2c1_fixed_state_counter = 0;
+        } else {
+          ++i2c1_fixed_state_counter;
+        }
+      } else {
+        i2c1_fixed_state_counter = 0;
+        i2c1_last_send_state = I2c1ClientSendStateGet();
+        i2c1_last_receive_state = I2c1ClientReceiveStateGet();
+      }
+    } else {
+      i2c1_fixed_state_counter = 0;
+    }
+  }
+  static uint8_t i2c2_fixed_state_counter = 0;
+  static uint8_t i2c2_last_send_state = 0;
+  static uint8_t i2c2_last_receive_state = 0;
+  if (i2c_port == 2) {
+    if (I2c2ClientIsActive()) {
+      if ((I2c2ClientSendStateGet() == i2c2_last_send_state) &&
+          (I2c2ClientReceiveStateGet() == i2c2_last_receive_state)) {
+        if (i2c2_fixed_state_counter >= kFixedStateLimit) {
+          DisplayAddStr("$i2c2 reset$");
+          I2c2ClientInit();
+          i2c2_fixed_state_counter = 0;
+        } else {
+          ++i2c2_fixed_state_counter;
+        }
+      } else {
+        i2c2_fixed_state_counter = 0;
+        i2c2_last_send_state = I2c2ClientSendStateGet();
+        i2c2_last_receive_state = I2c2ClientReceiveStateGet();
+      }
+    } else {
+      i2c2_fixed_state_counter = 0;
+    }
+  }
+}
+#endif
