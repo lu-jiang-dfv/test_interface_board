@@ -73,13 +73,18 @@ int main(void) {
       DisplayOneItem();
       ++display_wait_counter;
     }
+    // DelayMs(500);
+    // PetWatchDog();
     uint32_t cvd_read = CvdRead();
     uint16_t value1 = cvd_read >> 16;
     uint16_t value2 = cvd_read & 0xFFFF;
-    if (value1 >= value2) {
-      LATEbits.LATE0 = 1;
-    } else {
+    // DisplayAddStr("$cvd");
+    // DisplayAddNum32(cvd_read);
+    // DisplayAndWait(20);
+    if ((value1 <= value2) || (value1 - value2 < 0x500)) {
       LATEbits.LATE0 = 0;
+    } else {
+      LATEbits.LATE0 = 1;
     }
     //    DisplayAddNum32(CvdRead());
     //    DisplayAddStr(" ");
