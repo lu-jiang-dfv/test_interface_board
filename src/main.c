@@ -17,6 +17,7 @@
 inline bool check_i2c1_isr(void);
 inline bool check_i2c2_isr(void);
 void check_i2c_and_reset(uint8_t i2c_port);
+void set_i2c2_slave_address(void);
 
 int main(void) {
   BoardInit();
@@ -48,9 +49,11 @@ int main(void) {
   DisplayAddNum8(GetPcon0());
   DisplayAddStr("$status");
   DisplayAddNum8(GetStatus());
-  DisplayAddStr("$");
   DisplayAndWait(150);
 
+  set_i2c2_slave_address();
+
+  DisplayAddStr("$$");
   uint16_t display_wait_counter = 0;
   uint16_t display_line_counter = 0;
   while (1) {
@@ -70,7 +73,8 @@ int main(void) {
       }
       PetWatchDog();
     } else {
-      DisplayOneItem();
+//      DisplayOneItem();
+      DisplayAndWait(30);
       ++display_wait_counter;
     }
     // DelayMs(500);
@@ -195,6 +199,21 @@ void check_i2c_and_reset(uint8_t i2c_port) {
     }
   }
 }
+
+void set_i2c2_slave_address(void) {
+  uint16_t address = 0x100;
+  uint8_t data = ee_read(address);
+  data = data - (data % 2);
+  I2C2ADR0 = data;
+  I2C2ADR1 = data;
+  I2C2ADR2 = data;
+  I2C2ADR3 = data;
+  DisplayAddStr("$i2c2 address ");
+  DisplayAddNum8(data);
+}
+
+
+
 #if 0
   static uint8_t i2c1_last_send_state = 0;
   static uint8_t i2c1_last_receive_state = 0;
