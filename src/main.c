@@ -14,6 +14,9 @@
 #include "code_base/libs/dfv_i2c_registers.h"
 #include "code_base/libs/display.h"
 
+#define CHARGE_ENABLE_EE_ADDRESS 0x10
+#define DISCHARGE_ENABLE_EE_ADDRESS 0x11
+
 inline bool check_i2c1_isr(void);
 inline bool check_i2c2_isr(void);
 void check_i2c_and_reset(uint8_t i2c_port);
@@ -54,10 +57,30 @@ int main(void) {
   set_i2c2_slave_address();
 
   DisplayAddStr("$$");
+  // uint8_t charge_enable = ee_read(CHARGE_ENABLE_EE_ADDRESS);
+  // uint8_t discharge_enable = ee_read(DISCHARGE_ENABLE_EE_ADDRESS);
+  // if (charge_enable) {
+  //   I2cClientSetRegister(kBatteryChargeEnable, 1);
+  // }
+  // if (discharge_enable) {
+  //   I2cClientSetRegister(kHeadLightEnable, 1);
+  // }
   uint16_t display_wait_counter = 0;
   uint16_t display_line_counter = 0;
   while (1) {
     DelayMs(20);
+    // GlobalInterruptEnable(false);
+    // if (!I2c1ClientIsActive() && !I2c2ClientIsActive()) {
+    //   if ((I2cClientGetRegister(kBatteryChargeEnable) != charge_enable) && (I2cGetRegisterAccessCount(kBatteryChargeEnable) > 0)) {
+    //     charge_enable  = I2cClientGetRegister(kBatteryChargeEnable);
+    //     ee_write(CHARGE_ENABLE_EE_ADDRESS, charge_enable);
+    //   }
+    //   if ((I2cClientGetRegister(kHeadLightEnable) != discharge_enable) && (I2cGetRegisterAccessCount(kHeadLightEnable) > 0)) {
+    //     discharge_enable  = I2cClientGetRegister(kHeadLightEnable);
+    //     ee_write(DISCHARGE_ENABLE_EE_ADDRESS, discharge_enable);
+    //   }
+    // }
+    // GlobalInterruptEnable(true);
     if (display_wait_counter > 50) {
       display_wait_counter = 0;
       DisplayAddStr("*");
@@ -65,6 +88,7 @@ int main(void) {
       check_i2c_and_reset(1);
       check_i2c_and_reset(2);
       GlobalInterruptEnable(true);
+      LATEbits.LATE0 =  1 - LATEbits.LATE0;
       if (display_line_counter >= 60) {
         display_line_counter = 0;
         DisplayAddStr("$");
@@ -79,17 +103,17 @@ int main(void) {
     }
     // DelayMs(500);
     // PetWatchDog();
-    uint32_t cvd_read = CvdRead();
-    uint16_t value1 = cvd_read >> 16;
-    uint16_t value2 = cvd_read & 0xFFFF;
+//    uint32_t cvd_read = CvdRead();
+//    uint16_t value1 = cvd_read >> 16;
+//    uint16_t value2 = cvd_read & 0xFFFF;
     // DisplayAddStr("$cvd");
     // DisplayAddNum32(cvd_read);
     // DisplayAndWait(20);
-    if ((value1 <= value2) || (value1 - value2 < 0x500)) {
-      LATEbits.LATE0 = 0;
-    } else {
-      LATEbits.LATE0 = 1;
-    }
+//    if ((value1 <= value2) || (value1 - value2 < 0x500)) {
+//      LATEbits.LATE0 = 0;
+//    } else {
+//      LATEbits.LATE0 = 1;
+//    }
     //    DisplayAddNum32(CvdRead());
     //    DisplayAddStr(" ");
   }
@@ -110,6 +134,7 @@ void __interrupt(irq(default), base(0x4008)) DEFAULT_ISR(void) {
   } else {
     caught = check_i2c1_isr() || check_i2c2_isr();
     // eusart interrupt
+//    if (!caught && PIR3bits.U1TXIF &&
     if (PIR3bits.U1TXIF &&
         PIE3bits.U1TXIE) {  // If interrupt enabled and flag is set
       EusartInterruptHandler();
